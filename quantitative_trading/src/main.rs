@@ -39,7 +39,9 @@ async fn main() -> Result<(), Error> {
 
     // 初始化技术指标
     let mut ema = ExponentialMovingAverage::new(3).unwrap(); // 初始化指数移动平均线（EMA），周期为3
+                                                             // EMA（Exponential Moving Average）是指数移动平均线，用于平滑价格数据，赋予最近的数据点更大的权重
     let mut rsi = RelativeStrengthIndex::new(14).unwrap(); // 初始化相对强弱指数（RSI），周期为14
+                                                           // RSI（Relative Strength Index）是相对强弱指数，用于衡量价格的超买或超卖状态
 
     // 处理时间序列数据
     for (date, data) in response.time_series {

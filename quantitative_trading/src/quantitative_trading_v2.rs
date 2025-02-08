@@ -37,17 +37,17 @@ async fn main() -> Result<(), Box<dyn Error>> {
     // 创建一个策略配置实例，包含API密钥、股票符号、短期窗口和长期窗口
     let config = StrategyConfig {
         api_key: "XTUOEZ3P3FCS956P".to_string(), // API密钥，用于访问市场数据
-        symbol: "MSFT".to_string(), // 股票符号，这里为微软公司
-        short_window: 20, // 短期窗口大小，用于计算短期均线
-        long_window: 50, // 长期窗口大小，用于计算长期均线
+        symbol: "MSFT".to_string(),              // 股票符号，这里为微软公司
+        short_window: 20,                        // 短期窗口大小，用于计算短期均线
+        long_window: 50,                         // 长期窗口大小，用于计算长期均线
     };
 
     // 获取市场数据，使用await等待异步操作完成，?操作符用于错误处理
     let price_data = fetch_market_data_v2(&config).await?;
-    
+
     // 生成交易信号，传入价格数据、短期窗口和长期窗口
     let signal = execute_trading_strategy(&price_data);
-    
+
     // 执行交易逻辑
     match signal {
         TradeSignal::Buy => println!("🟢 BUY SIGNAL"),
@@ -70,7 +70,10 @@ async fn fetch_market_data(config: &StrategyConfig) -> Result<Vec<f64>, Box<dyn 
     // 发送HTTP GET请求，并等待响应
     // 使用?操作符处理可能的错误
     // 将响应解析为AlphaVantageResponse类型的JSON
-    let response = reqwest::get(&url).await?.json::<AlphaVantageResponse>().await?;
+    let response = reqwest::get(&url)
+        .await?
+        .json::<AlphaVantageResponse>()
+        .await?;
 
     // 初始化一个空的f64类型的向量，用于存储收盘价
     let mut closes = Vec::new();
@@ -98,7 +101,10 @@ async fn fetch_market_data_v2(config: &StrategyConfig) -> Result<PriceData, Box<
     );
 
     // 发送HTTP GET请求，并等待响应，然后将响应解析为AlphaVantageResponse类型的JSON
-    let response = reqwest::get(&url).await?.json::<AlphaVantageResponse>().await?;
+    let response = reqwest::get(&url)
+        .await?
+        .json::<AlphaVantageResponse>()
+        .await?;
 
     // 初始化存储价格相关数据的向量
     let mut prices = Vec::new();
@@ -137,7 +143,6 @@ async fn fetch_market_data_v2(config: &StrategyConfig) -> Result<PriceData, Box<
         closes,
     })
 }
-
 
 // 定义一个函数，用于根据价格数据生成交易信号
 fn generate_signal(prices: &[f64], short_window: usize, long_window: usize) -> TradeSignal {
@@ -185,8 +190,6 @@ fn generate_signal(prices: &[f64], short_window: usize, long_window: usize) -> T
         TradeSignal::Hold
     }
 }
-
-
 
 #[cfg(test)]
 mod tests {
