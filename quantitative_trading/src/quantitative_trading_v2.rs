@@ -19,13 +19,13 @@ struct AlphaVantageResponse {
 struct StrategyConfig {
     api_key: String,
     symbol: String,
-    short_window: usize,
-    long_window: usize,
+    _short_window: usize,
+    _long_window: usize,
 }
 
 // 交易信号枚举
 #[derive(Debug, PartialEq)]
-enum TradeSignal {
+pub enum TradeSignal {
     Buy,
     Sell,
     Hold,
@@ -45,13 +45,11 @@ enum TradeSignalWithRisk {
         quantity: f64,
     },
     Hold,
-    
 }
 
 struct RiskManager {
     total_capital: f64,
     risk_per_trade: f64,
-    stop_loss_pct: f64,
     take_profit_pct: f64,
     atr_period: usize,
 }
@@ -61,7 +59,6 @@ impl RiskManager {
         RiskManager {
             total_capital,
             risk_per_trade: 0.01,
-            stop_loss_pct: 0.02,
             take_profit_pct: 0.03,
             atr_period: 14,
         }
@@ -90,11 +87,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let config = StrategyConfig {
         api_key: "XTUOEZ3P3FCS956P".to_string(), // API密钥，用于访问市场数据
         symbol: "MSFT".to_string(),              // 股票符号，这里为微软公司
-        short_window: 20,                        // 短期窗口大小，用于计算短期均线
-        long_window: 50,                         // 长期窗口大小，用于计算长期均线
+        _short_window: 20,                       // 短期窗口大小，用于计算短期均线
+        _long_window: 50,                        // 长期窗口大小，用于计算长期均线
     };
 
-    let mut risk_manager = RiskManager::new(100000.0);
+    let risk_manager = RiskManager::new(100000.0);
 
     // 获取市场数据，使用await等待异步操作完成，?操作符用于错误处理
     let price_data = fetch_market_data_v2(&config).await?;
@@ -103,22 +100,34 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     // 生成交易信号，传入价格数据、短期窗口和长期窗口
     let signal = execute_trading_strategy(&price_data);
-    let signal_with_risk_manager = calulate_signal_with_risk_manager(&signal, &risk_manager, atr, &price_data);
+    let signal_with_risk_manager =
+        calulate_signal_with_risk_manager(&signal, &risk_manager, atr, &price_data);
 
     match signal_with_risk_manager {
-        TradeSignalWithRisk::Buy { entry_price, stop_loss, take_profit, quantity } => {
-            println!("🟢 BUY: Price={:.2} Qty={} SL={:.2} TP={:.2}", 
-                    entry_price, quantity, stop_loss, take_profit);
+        TradeSignalWithRisk::Buy {
+            entry_price,
+            stop_loss,
+            take_profit,
+            quantity,
+        } => {
+            println!(
+                "🟢 BUY: Price={:.2} Qty={} SL={:.2} TP={:.2}",
+                entry_price, quantity, stop_loss, take_profit
+            );
         }
-        TradeSignalWithRisk::Sell { entry_price, stop_loss, take_profit, quantity } => {
-            println!("🔴 SELL: Price={:.2} Qty={} SL={:.2} TP={:.2}", 
-                   entry_price, quantity, stop_loss, take_profit);
+        TradeSignalWithRisk::Sell {
+            entry_price,
+            stop_loss,
+            take_profit,
+            quantity,
+        } => {
+            println!(
+                "🔴 SELL: Price={:.2} Qty={} SL={:.2} TP={:.2}",
+                entry_price, quantity, stop_loss, take_profit
+            );
         }
         TradeSignalWithRisk::Hold => println!("🟡 HOLD"),
     }
-
-
-    
 
     // 执行交易逻辑
     // match signal {
@@ -145,16 +154,15 @@ async fn main() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-
 fn calculate_atr(price_data: &PriceData, period: usize) -> Vec<f64> {
     let mut atr_values = Vec::new();
     let mut true_ranges = Vec::new();
 
     for i in 1..price_data.prices.len() {
         let tr1 = price_data.highs[i] - price_data.lows[i];
-        let tr2 = (price_data.highs[i] - price_data.closes[i-1]).abs();
-        let tr3 = (price_data.lows[i] - price_data.closes[i-1]).abs();
-        
+        let tr2 = (price_data.highs[i] - price_data.closes[i - 1]).abs();
+        let tr3 = (price_data.lows[i] - price_data.closes[i - 1]).abs();
+
         true_ranges.push(tr1.max(tr2).max(tr3));
     }
 
@@ -166,7 +174,12 @@ fn calculate_atr(price_data: &PriceData, period: usize) -> Vec<f64> {
     atr_values
 }
 
-fn calulate_signal_with_risk_manager(signal: &TradeSignal, risk_manager: &RiskManager, atr: Vec<f64>, price_data: &PriceData) -> TradeSignalWithRisk {
+fn calulate_signal_with_risk_manager(
+    signal: &TradeSignal,
+    risk_manager: &RiskManager,
+    atr: Vec<f64>,
+    price_data: &PriceData,
+) -> TradeSignalWithRisk {
     match signal {
         TradeSignal::Buy => {
             let entry_price = price_data.closes.last().unwrap();
@@ -177,13 +190,13 @@ fn calulate_signal_with_risk_manager(signal: &TradeSignal, risk_manager: &RiskMa
 
             let take_profit = entry_price * (1.0 + risk_manager.take_profit_pct);
 
-            return TradeSignalWithRisk::Buy{
+            return TradeSignalWithRisk::Buy {
                 entry_price: *entry_price,
                 stop_loss,
                 take_profit,
                 quantity,
             };
-        },
+        }
         TradeSignal::Sell => {
             let entry_price = price_data.closes.last().unwrap();
             let current_atr = atr.last().unwrap_or(&0.0);
@@ -197,18 +210,17 @@ fn calulate_signal_with_risk_manager(signal: &TradeSignal, risk_manager: &RiskMa
                 stop_loss,
                 take_profit,
                 quantity,
-            }
+            };
         }
         TradeSignal::Hold => {
             return TradeSignalWithRisk::Hold;
         }
-        
     }
 }
 
 // 定义一个异步函数fetch_market_data，用于获取市场数据
 // 参数config是一个StrategyConfig的引用，返回一个Result类型，其中包含一个f64类型的向量或者一个动态错误
-async fn fetch_market_data(config: &StrategyConfig) -> Result<Vec<f64>, Box<dyn Error>> {
+async fn _fetch_market_data(config: &StrategyConfig) -> Result<Vec<f64>, Box<dyn Error>> {
     // 构建请求URL，使用format!宏插入symbol和api_key
     let url = format!(
         "https://www.alphavantage.co/query?function=TIME_SERIES_INTRADAY&symbol={}&interval=5min&apikey={}",
@@ -293,7 +305,7 @@ async fn fetch_market_data_v2(config: &StrategyConfig) -> Result<PriceData, Box<
 }
 
 // 定义一个函数，用于根据价格数据生成交易信号
-fn generate_signal(prices: &[f64], short_window: usize, long_window: usize) -> TradeSignal {
+fn _generate_signal(prices: &[f64], short_window: usize, long_window: usize) -> TradeSignal {
     // 创建短期简单移动平均线（SMA）实例
     let mut short_sma = SimpleMovingAverage::new(short_window).unwrap();
     // 创建长期简单移动平均线（SMA）实例
@@ -348,7 +360,7 @@ mod tests {
         let prices = vec![10.0, 20.0, 15.0, 30.0, 25.0];
         let short_window = 3;
         let long_window = 2;
-        let result = generate_signal(&prices, short_window, long_window);
+        let result = _generate_signal(&prices, short_window, long_window);
         assert_eq!(result, TradeSignal::Hold);
     }
 
@@ -357,7 +369,7 @@ mod tests {
         let prices = vec![10.0, 20.0, 15.0, 30.0, 25.0];
         let short_window = 2;
         let long_window = 3;
-        let result = generate_signal(&prices, short_window, long_window);
+        let result = _generate_signal(&prices, short_window, long_window);
         assert_eq!(result, TradeSignal::Hold);
     }
 
@@ -366,7 +378,7 @@ mod tests {
         let prices = vec![10.0, 20.0, 15.0, 30.0, 25.0];
         let short_window = 2;
         let long_window = 3;
-        let result = generate_signal(&prices, short_window, long_window);
+        let result = _generate_signal(&prices, short_window, long_window);
         assert_eq!(result, TradeSignal::Buy);
     }
 
@@ -375,7 +387,7 @@ mod tests {
         let prices = vec![30.0, 20.0, 15.0, 10.0, 25.0];
         let short_window = 3;
         let long_window = 2;
-        let result = generate_signal(&prices, short_window, long_window);
+        let result = _generate_signal(&prices, short_window, long_window);
         assert_eq!(result, TradeSignal::Sell);
     }
 
@@ -384,7 +396,7 @@ mod tests {
         let prices = vec![10.0, 20.0, 15.0, 20.0, 25.0];
         let short_window = 3;
         let long_window = 2;
-        let result = generate_signal(&prices, short_window, long_window);
+        let result = _generate_signal(&prices, short_window, long_window);
         assert_eq!(result, TradeSignal::Hold);
     }
 }
