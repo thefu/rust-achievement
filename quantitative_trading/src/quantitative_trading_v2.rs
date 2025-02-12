@@ -25,10 +25,62 @@ struct StrategyConfig {
 
 // 交易信号枚举
 #[derive(Debug, PartialEq)]
-pub enum TradeSignal {
+enum TradeSignal {
     Buy,
     Sell,
     Hold,
+}
+
+enum TradeSignalWithRisk {
+    Buy {
+        entry_price: f64,
+        stop_loss: f64,
+        take_profit: f64,
+        quantity: f64,
+    },
+    Sell {
+        entry_price: f64,
+        stop_loss: f64,
+        take_profit: f64,
+        quantity: f64,
+    },
+    Hold,
+    
+}
+
+struct RiskManager {
+    total_capital: f64,
+    risk_per_trade: f64,
+    stop_loss_pct: f64,
+    take_profit_pct: f64,
+    atr_period: usize,
+}
+
+impl RiskManager {
+    fn new(total_capital: f64) -> Self {
+        RiskManager {
+            total_capital,
+            risk_per_trade: 0.01,
+            stop_loss_pct: 0.02,
+            take_profit_pct: 0.03,
+            atr_period: 14,
+        }
+    }
+
+    fn calculate_position_size(&self, entry_price: f64, atr: f64) -> f64 {
+        let risk_amount = self.total_capital * self.risk_per_trade;
+        let units = risk_amount / (atr * entry_price);
+        // Round down to the nearest whole number of units
+        units.floor()
+    }
+
+    fn dynamic_stop_loss(&self, entry_price: f64, atr: f64, is_long: bool) -> f64 {
+        if is_long {
+            entry_price - 2.0 * atr
+        } else {
+            entry_price + 2.0 * atr
+        }
+    }
 }
 
 #[tokio::main]
@@ -42,20 +94,116 @@ async fn main() -> Result<(), Box<dyn Error>> {
         long_window: 50,                         // 长期窗口大小，用于计算长期均线
     };
 
+    let mut risk_manager = RiskManager::new(100000.0);
+
     // 获取市场数据，使用await等待异步操作完成，?操作符用于错误处理
     let price_data = fetch_market_data_v2(&config).await?;
 
+    let atr = calculate_atr(&price_data, risk_manager.atr_period);
+
     // 生成交易信号，传入价格数据、短期窗口和长期窗口
     let signal = execute_trading_strategy(&price_data);
+    let signal_with_risk_manager = calulate_signal_with_risk_manager(&signal, &risk_manager, atr, &price_data);
 
-    // 执行交易逻辑
-    match signal {
-        TradeSignal::Buy => println!("🟢 BUY SIGNAL"),
-        TradeSignal::Sell => println!("🔴 SELL SIGNAL"),
-        TradeSignal::Hold => println!("🟡 HOLD"),
+    match signal_with_risk_manager {
+        TradeSignalWithRisk::Buy { entry_price, stop_loss, take_profit, quantity } => {
+            println!("🟢 BUY: Price={:.2} Qty={} SL={:.2} TP={:.2}", 
+                    entry_price, quantity, stop_loss, take_profit);
+        }
+        TradeSignalWithRisk::Sell { entry_price, stop_loss, take_profit, quantity } => {
+            println!("🔴 SELL: Price={:.2} Qty={} SL={:.2} TP={:.2}", 
+                   entry_price, quantity, stop_loss, take_profit);
+        }
+        TradeSignalWithRisk::Hold => println!("🟡 HOLD"),
     }
 
+
+    
+
+    // 执行交易逻辑
+    // match signal {
+    //     TradeSignal::Buy => {
+    //         let entry_price = ohlc_data.last().unwrap().close;
+    //         let current_atr = atr.last().unwrap_or(&0.0);
+
+    //         let stop_loss = risk_manager.dynamic_stop_loss(entry_price, *current_atr, true);
+    //         let quantity = risk_manager.calculate_position_size(entry_price, *current_atr);
+
+    //         let take_profit = entry_price * (1.0 + risk_manager.take_profit_pct);
+
+    //         return TradeSignal::Buy {
+    //             entry_price,
+    //             stop_loss,
+    //             take_profit,
+    //             quantity,
+    //         };
+    //     }
+    //     TradeSignal::Sell => println!("🔴 SELL SIGNAL"),
+    //     TradeSignal::Hold => println!("🟡 HOLD"),
+    // }
+
     Ok(())
+}
+
+
+fn calculate_atr(price_data: &PriceData, period: usize) -> Vec<f64> {
+    let mut atr_values = Vec::new();
+    let mut true_ranges = Vec::new();
+
+    for i in 1..price_data.prices.len() {
+        let tr1 = price_data.highs[i] - price_data.lows[i];
+        let tr2 = (price_data.highs[i] - price_data.closes[i-1]).abs();
+        let tr3 = (price_data.lows[i] - price_data.closes[i-1]).abs();
+        
+        true_ranges.push(tr1.max(tr2).max(tr3));
+    }
+
+    let mut atr = SimpleMovingAverage::new(period).unwrap();
+    for tr in true_ranges {
+        atr_values.push(atr.next(tr));
+    }
+
+    atr_values
+}
+
+fn calulate_signal_with_risk_manager(signal: &TradeSignal, risk_manager: &RiskManager, atr: Vec<f64>, price_data: &PriceData) -> TradeSignalWithRisk {
+    match signal {
+        TradeSignal::Buy => {
+            let entry_price = price_data.closes.last().unwrap();
+            let current_atr = atr.last().unwrap_or(&0.0);
+
+            let stop_loss = risk_manager.dynamic_stop_loss(*entry_price, *current_atr, true);
+            let quantity = risk_manager.calculate_position_size(*entry_price, *current_atr);
+
+            let take_profit = entry_price * (1.0 + risk_manager.take_profit_pct);
+
+            return TradeSignalWithRisk::Buy{
+                entry_price: *entry_price,
+                stop_loss,
+                take_profit,
+                quantity,
+            };
+        },
+        TradeSignal::Sell => {
+            let entry_price = price_data.closes.last().unwrap();
+            let current_atr = atr.last().unwrap_or(&0.0);
+
+            let stop_loss = risk_manager.dynamic_stop_loss(*entry_price, *current_atr, false);
+            let quantity = risk_manager.calculate_position_size(*entry_price, *current_atr);
+            let take_profit = entry_price * (1.0 - risk_manager.take_profit_pct);
+
+            return TradeSignalWithRisk::Sell {
+                entry_price: *entry_price,
+                stop_loss,
+                take_profit,
+                quantity,
+            }
+        }
+        TradeSignal::Hold => {
+            return TradeSignalWithRisk::Hold;
+        }
+        
+    }
 }
 
 // 定义一个异步函数fetch_market_data，用于获取市场数据

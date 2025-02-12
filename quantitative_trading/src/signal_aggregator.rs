@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::TradeSignal;
+use crate::{RiskManager, TradeSignal};
 
 #[derive(Debug, Clone)]
 pub struct SignalStrength {
